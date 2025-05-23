@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gestión de Tareas Kanban</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #eef2f7;
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+
+    h1 {
+      text-align: center;
+      padding: 20px;
+      background-color: #4a90e2;
+      color: white;
+      margin: 0;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    .kanban-board {
+      display: flex;
+      justify-content: space-around;
+      padding: 20px;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .column {
+      background-color: #ffffff;
+      padding: 20px;
+      width: 300px;
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      transition: transform 0.2s ease;
+    }
+
+    .column:hover {
+      transform: translateY(-5px);
+    }
+
+    .column h2 {
+      margin-top: 0;
+      color: #4a90e2;
+      border-bottom: 2px solid #eee;
+      padding-bottom: 10px;
+    }
+
+    .column ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .column li {
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #f9f9f9;
+      border-left: 5px solid #4a90e2;
+      border-radius: 8px;
+      cursor: grab;
+      transition: background-color 0.2s ease;
+    }
+
+    .column li:hover {
+      background-color: #f0f8ff;
+    }
+
+    .subtarea {
+      margin-left: 10px;
+      display: flex;
+      gap: 5px;
+      margin-top: 5px;
+    }
+
+    #panel-actividad {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 300px;
+      background: #ffffff;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    #actividad-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #4a90e2;
+    }
+
+    #toggle-panel {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      color: #4a90e2;
+    }
+
+    #panel-actividad.minimizado ul {
+      display: none;
+    }
+
+    #panel-actividad.minimizado {
+      height: auto;
+      width: 200px;
+      overflow: hidden;
+    }
+
+    button {
+      margin: 2px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 6px;
+      background-color: #4a90e2;
+      color: white;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #357ab8;
+    }
+
+    input[type="text"],
+    input[type="date"] {
+      width: calc(100% - 10px);
+      padding: 8px;
+      margin-top: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Aplicación de Gestión de Tareas (Kanban)</h1>
+
+  <div class="kanban-board">
+    <div class="column">
+      <h2>To-Do</h2>
+      <ul id="to-do-list"></ul>
+      <input type="text" id="new-task" placeholder="Nueva tarea" />
+      <input type="date" id="fecha-vencimiento" />
+      <button id="add-task">Agregar tarea</button>
+    </div>
+    <div class="column">
+      <h2>En progreso</h2>
+      <ul id="in-progress-list"></ul>
+    </div>
+    <div class="column">
+      <h2>Completadas</h2>
+      <ul id="completed-list"></ul>
+    </div>
+  </div>
+
+  <div id="panel-actividad" class="panel-activo">
+    <div id="actividad-header">
+      <h3>Actividad Reciente</h3>
+      <button id="toggle-panel">🔽</button>
+    </div>
+    <ul id="lista-actividad"></ul>
+  </div>
+
+  <script>
+    const toDoList = document.getElementById("to-do-list");
+    const inProgressList = document.getElementById("in-progress-list");
+    const completedList = document.getElementById("completed-list");
+    const newTaskInput = document.getElementById("new-task");
+    const fechaInput = document.getElementById("fecha-vencimiento");
+    const addTaskButton = document.getElementById("add-task");
+
+    addTaskButton.addEventListener("click", () => {
+      const text = newTaskInput.value.trim();
+      const fecha = fechaInput.value;
+      if (text) {
+        const task = crearTarea(text, fecha);
+        toDoList.appendChild(task);
+        guardarDatos();
+        newTaskInput.value = "";
+        fechaInput.value = "";
+        logActividad("Agregada", text);
+      }
+    });
+
+    function crearTarea(text, fecha) {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="texto-tarea">${text}</span>`;
+      if (fecha) li.dataset.vencimiento = fecha;
+
+      const btnSub = crearBoton("➕ Subtarea", () => agregarSubtarea(li));
+      const btnEdit = crearBoton("✏️", () => editarTarea(li));
+      const btnDelete = crearBoton("🗑️", () => {
+        if (confirm("¿Eliminar esta tarea?")) {
+          li.remove();
+          logActividad("Eliminada", text);
+          guardarDatos();
+        }
+      });
+      const btnProgress = crearBoton("▶️", () => {
+        inProgressList.appendChild(li);
+        logActividad("En progreso", text);
+        guardarDatos();
+      });
+      const btnDone = crearBoton("✅", () => {
+        completedList.appendChild(li);
+        logActividad("Completada", text);
+        guardarDatos();
+      });
+
+      li.appendChild(document.createElement("br"));
+      li.appendChild(btnSub);
+      li.appendChild(btnEdit);
+      li.appendChild(btnDelete);
+      li.appendChild(btnProgress);
+      li.appendChild(btnDone);
+
+      hacerDraggable(li);
+      return li;
+    }
+
+    function crearBoton(texto, accion) {
+      const btn = document.createElement("button");
+      btn.textContent = texto;
+      btn.onclick = accion;
+      return btn;
+    }
+
+    function editarTarea(tarea) {
+      const span = tarea.querySelector(".texto-tarea");
+      const nuevoTexto = prompt("Editar tarea:", span.textContent);
+      if (nuevoTexto !== null && nuevoTexto.trim() !== "") {
+        span.textContent = nuevoTexto.trim();
+        logActividad("Editada", nuevoTexto.trim());
+        guardarDatos();
+      }
+    }
+
+    function agregarSubtarea(tarea, texto = "") {
+      const subtarea = document.createElement("div");
+      subtarea.classList.add("subtarea");
+      subtarea.innerHTML = `
+        <input type="text" value="${texto}" />
+        <button onclick="this.parentElement.remove()">❌</button>
+      `;
+      tarea.appendChild(subtarea);
+    }
+
+    function logActividad(accion, tarea) {
+      let historial = JSON.parse(localStorage.getItem("historial")) || [];
+      historial.push({ fecha: new Date().toISOString(), accion, tarea });
+      localStorage.setItem("historial", JSON.stringify(historial));
+    }
+
+    function actualizarPanelActividad() {
+      const historial = JSON.parse(localStorage.getItem("historial")) || [];
+      const panel = document.getElementById("lista-actividad");
+      panel.innerHTML = "";
+      historial.slice(-10).reverse().forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = `[${new Date(item.fecha).toLocaleString()}] ${item.accion}: ${item.tarea}`;
+        panel.appendChild(li);
+      });
+    }
+
+    function verificarVencimientos() {
+      const tareas = document.querySelectorAll("li[data-vencimiento]");
+      const hoy = new Date();
+      tareas.forEach((tarea) => {
+        const vencimiento = new Date(tarea.dataset.vencimiento);
+        const diff = (vencimiento - hoy) / (1000 * 60 * 60 * 24);
+        const texto = tarea.querySelector(".texto-tarea")?.textContent || "";
+        if (diff <= 1 && !tarea.dataset.notificado) {
+          alert(`⚠️ La tarea "${texto}" vence pronto`);
+          tarea.dataset.notificado = "true";
+        }
+      });
+    }
+
+    function hacerDraggable(tarea) {
+      tarea.setAttribute("draggable", true);
+      tarea.id = "tarea-" + Math.random().toString(36).substr(2, 9);
+      tarea.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", tarea.id);
+      });
+    }
+
+    document.querySelectorAll("ul").forEach((lista) => {
+      lista.addEventListener("dragover", (e) => e.preventDefault());
+      lista.addEventListener("drop", (e) => {
+        const id = e.dataTransfer.getData("text/plain");
+        const tarea = document.getElementById(id);
+        lista.appendChild(tarea);
+        logActividad("Movida", tarea.querySelector(".texto-tarea")?.textContent || "");
+        guardarDatos();
+      });
+    });
+
+    function guardarDatos() {
+      const datos = {
+        todo: toDoList.innerHTML,
+        progreso: inProgressList.innerHTML,
+        completadas: completedList.innerHTML,
+      };
+      localStorage.setItem("tareas", JSON.stringify(datos));
+    }
+
+    function cargarDatos() {
+      const datos = JSON.parse(localStorage.getItem("tareas"));
+      if (!datos) return;
+      toDoList.innerHTML = datos.todo;
+      inProgressList.innerHTML = datos.progreso;
+      completedList.innerHTML = datos.completadas;
+
+      document.querySelectorAll("li").forEach((li) => {
+        hacerDraggable(li);
+        li.querySelectorAll("button").forEach((btn) => btn.remove());
+        const texto = li.querySelector(".texto-tarea")?.textContent || li.textContent;
+        const fecha = li.dataset.vencimiento || "";
+        const nueva = crearTarea(texto, fecha);
+        li.replaceWith(nueva);
+      });
+    }
+
+    document.getElementById('toggle-panel').addEventListener('click', () => {
+      const panel = document.getElementById('panel-actividad');
+      const btn = document.getElementById('toggle-panel');
+      panel.classList.toggle('minimizado');
+      btn.textContent = panel.classList.contains('minimizado') ? '🔼' : '🔽';
+    });
+
+    window.onload = () => {
+      cargarDatos();
+      actualizarPanelActividad();
+    };
+
+    setInterval(verificarVencimientos, 60000);
+    setInterval(actualizarPanelActividad, 10000);
+    window.onbeforeunload = guardarDatos;
+
+    document.querySelectorAll(".column").forEach((columna) => {
+      columna.addEventListener("dragover", (e) => e.preventDefault());
+      columna.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const id = e.dataTransfer.getData("text/plain");
+        const tarea = document.getElementById(id);
+        const ul = columna.querySelector("ul");
+        if (ul && tarea) {
+          ul.appendChild(tarea);
+          logActividad("Movida", tarea.querySelector(".texto-tarea")?.textContent || "");
+          guardarDatos();
+        }
+      });
+    });
+  </script>
+</body>
+</html>
